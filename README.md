@@ -63,7 +63,7 @@ python -m venv venv
 2. **Activate and install dependencies**:
 ```
 # Windows
-.venv\Scripts\activate
+venv\Scripts\activate
 # macOS/Linux
 source venv/bin/activate
 
