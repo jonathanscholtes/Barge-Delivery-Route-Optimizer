@@ -72,6 +72,8 @@ class Optimizer:
 
         return df_nodes, tt_df
 
+
+
     def __create_data_model(self, df_nodes, tt_df, barge_capacity_units, depot_id='PORT0'):
         """
         Build OR-Tools data dictionary from nodes and travel times.
@@ -112,6 +114,8 @@ class Optimizer:
             'depot': 0,
             'nodes': nodes
         }
+
+
 
     def __solve_cvrptw(self, data):
         """
@@ -194,6 +198,7 @@ class Optimizer:
         else:
             print("Solver did not find a solution. Status =", status_map.get(routing.status(), routing.status()))
             return None
+
 
     def run(self, week_start='2025-10-13'):
         """

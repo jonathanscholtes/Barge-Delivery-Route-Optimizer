@@ -5,7 +5,7 @@ from forecast import Forecast
 import networkx as nx
 import matplotlib.pyplot as plt
 
-# --- Inputs ---
+
 HOLDOUT_WEEKS = 12
 FORECAST_HORIZON = 52
 INPUT_SALES = r"../../data/sales_history.csv"
@@ -13,7 +13,7 @@ SITE_SPECS = r"../../data/site_specs.csv"
 TRAVEL = r"../../data/travel_times.csv"
 BARGE = r"../../data/barge_specs.csv"
 
-# --- Page Title & Description ---
+
 st.title("Weekly Barge Delivery Optimizer")
 st.markdown("""
 This app helps you plan barge deliveries efficiently using forecasted demand and 
@@ -23,10 +23,10 @@ route optimization. Steps:
 3. View the forecasted demand, optimized delivery sequence, and a route map.
 """)
 
-# --- Week selector ---
+
 week_start = st.text_input("Select week to optimize", value="2026-04-13")
 
-# --- Forecast caching to avoid reruns ---
+# --- Forecast caching to avoid reruns (run Optimizer) ---
 @st.cache_data
 def generate_forecast():
     """Run forecast once and cache results."""
@@ -34,10 +34,11 @@ def generate_forecast():
     forecast_df = forecaster.run()
     return forecast_df
 
+
 # --- Run pipeline ---
 if st.button("Run Forecast & Optimize"):
 
-    # --- Forecast with spinner ---
+    # --- Forecast ---
     with st.spinner("Generating forecasts..."):
         forecast_df = generate_forecast()
         st.success("Forecast complete!")
@@ -52,7 +53,7 @@ if st.button("Run Forecast & Optimize"):
     """)
     st.dataframe(forecast_df.tail(20))
 
-    # --- Optimization with spinner ---
+    # --- Optimization ---
     with st.spinner("Running optimizer..."):
         optimizer = Optimizer(forecast_df, SITE_SPECS, TRAVEL, BARGE)
         route = optimizer.run(week_start=str(week_start))
