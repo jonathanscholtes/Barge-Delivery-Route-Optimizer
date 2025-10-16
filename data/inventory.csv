@@ -1,0 +1,7 @@
+site_id,product_id,on_hand_units,tank_capacity_units,min_days
+S1,P1,500,1000,3
+S1,P2,200,800,2
+S2,P1,700,1200,3
+S2,P2,300,900,2
+S3,P1,1000,1500,4
+S3,P2,400,1000,3

@@ -1,0 +1,4 @@
+barge_id,total_capacity_units,working_hours_start,working_hours_end,avg_loading_rate_units_per_min
+B1,4000,06:00,18:00,15
+B2,4000,06:00,18:00,15
+B3,2000,08:00,20:00,12
