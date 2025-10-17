@@ -3,7 +3,7 @@ import pandas as pd
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 from datetime import datetime
-
+import math
 
 class Optimizer:
     """
@@ -24,6 +24,13 @@ class Optimizer:
         self.site_specs_file = site_specs_file
         self.travel_file = travel_file
         self.barge_file = barge_file
+
+    def __minutes_to_datetime(self, week_start_date, minutes):
+        """
+        Convert minutes since week start into a pandas.Timestamp
+        """
+        start_week = pd.to_datetime(week_start_date)
+        return start_week + pd.Timedelta(minutes=minutes)
 
     def __build_week_input(self, week_start_date):
         """
@@ -88,7 +95,22 @@ class Optimizer:
 
         # Demands & service times
         demands = [0] + df_nodes['forecast_units'].astype(int).tolist()
-        service_times = [0] + df_nodes['service_time_minutes'].fillna(30).astype(int).tolist()
+        service_times = [0] # + df_nodes['service_time_minutes'].fillna(30).astype(int).tolist()
+
+        # Iterate through sites and compute service time per stop
+        for idx, row in df_nodes.iterrows():
+            # Use forecast demand
+            qty = row['forecast_units']
+            
+            # Get barge loading rate - here we can use the max or average rate
+            # For simplicity, assume first barge's rate
+            loading_rate = barge_df['avg_loading_rate_units_per_min'].iloc[0]  # adjust per barge if needed
+            
+            # Compute service time = max(site_min_service_time, ceil(qty / loading_rate))
+            site_min = row['service_time_minutes'] if not math.isnan(row['service_time_minutes']) else 30
+            service_time = max(site_min, math.ceil(qty / loading_rate))
+            
+            service_times.append(service_time)
 
         def to_min(tstr):
             hh, mm = map(int, tstr.split(':'))
@@ -121,7 +143,7 @@ class Optimizer:
         }
 
 
-    def __solve_cvrptw(self, data):
+    def __solve_cvrptw(self,week_start_date, data):
         """
         Solve CVRPTW problem with OR-Tools and return route as a dictionary of barge_id -> stops.
         Handles vehicle time windows, node time windows, and capacity checks safely.
@@ -192,7 +214,7 @@ class Optimizer:
 
         # --- Solver parameters ---
         params = pywrapcp.DefaultRoutingSearchParameters()
-        params.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+        params.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.SAVINGS #routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
         params.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
         params.time_limit.seconds = 60
         params.log_search = True
@@ -216,12 +238,17 @@ class Optimizer:
                 while not routing.IsEnd(index):
                     node = manager.IndexToNode(index)
                     if node != data['depot']:
+                        arrival_min = solution.Min(time_dim.CumulVar(index))
+                        departure_min = solution.Max(time_dim.CumulVar(index))
                         route[data['barge_ids'][vehicle_id]].append({
                             'order': order,
                             'site_id': data['nodes'][node],
                             'qty': data['demands'][node],
-                            'arrival_min': solution.Min(time_dim.CumulVar(index)),
-                            'departure_min': solution.Max(time_dim.CumulVar(index))  # rough ETA/ETD
+                            'arrival_min': arrival_min,
+                            'departure_min': departure_min,
+                            'arrival_dt': self.__minutes_to_datetime(week_start_date, arrival_min),
+                            'departure_dt': self.__minutes_to_datetime(week_start_date, departure_min)
+               
                         })
                         order += 1
                     index = solution.Value(routing.NextVar(index))
@@ -235,18 +262,18 @@ class Optimizer:
 
 
 
-    def run(self, week_start='2025-10-13'):
+    def run(self, week_start_date='2025-10-13'):
         """
         Run optimizer for a given week_start and return the dispatch routes for all barges.
         """
-        df_nodes, tt_df = self.__build_week_input(week_start)
+        df_nodes, tt_df = self.__build_week_input(week_start_date)
         if df_nodes.empty or tt_df.empty:
             print("No data to solve for this week.")
             return None
 
         barge_df = pd.read_csv(self.barge_file)
         data = self.__create_data_model(df_nodes, tt_df, barge_df)
-        sol = self.__solve_cvrptw(data)
+        sol = self.__solve_cvrptw(week_start_date, data)
 
         print("Solution route:", sol)
         return sol

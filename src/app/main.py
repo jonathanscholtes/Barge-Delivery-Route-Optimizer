@@ -26,7 +26,7 @@ def main():
     # Example: run optimizer for a specific week
     week_start = '2026-04-13'
     print(f"\nRunning optimizer for week starting {week_start}...")
-    optimizer.run(week_start=week_start)
+    optimizer.run(week_start_date=week_start)
 
 
 if __name__ == "__main__":

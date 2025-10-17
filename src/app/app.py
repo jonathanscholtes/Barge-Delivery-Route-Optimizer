@@ -1,3 +1,4 @@
+# app.py
 import streamlit as st
 import pandas as pd
 from optimize import Optimizer
@@ -50,7 +51,7 @@ if st.button("Run Forecast & Optimize"):
     # --- Optimization ---
     with st.spinner("Running optimizer..."):
         optimizer = Optimizer(forecast_df, SITE_SPECS, TRAVEL, BARGE)
-        route_dict = optimizer.run(week_start=str(week_start))
+        route_dict = optimizer.run(week_start_date=str(week_start))
 
     st.success("Optimization complete!")
 
@@ -66,6 +67,10 @@ if st.button("Run Forecast & Optimize"):
             df_route['cumulative_qty'] = df_route.groupby('barge_id')['qty'].cumsum()
             df_route['visit_order'] = df_route.groupby('barge_id')['order'].rank(method='first').astype(int)
 
+            df_route['arrival_dt'] = df_route['arrival_dt'].dt.strftime('%Y-%m-%d %H:%M')
+            df_route['departure_dt'] = df_route['departure_dt'].dt.strftime('%Y-%m-%d %H:%M')
+
+
             st.subheader(f"Optimized Delivery Routes")
             st.markdown("""
             - `visit_order`: sequence of deliveries.
@@ -73,12 +78,13 @@ if st.button("Run Forecast & Optimize"):
             - `qty`: units to deliver at that site.
             - `cumulative_qty`: running total (helps track barge capacity usage).
             - `arrival_min` / `departure_min`: estimated arrival and departure times in minutes since start of week.
+            - `arrival_dt` / `departure_dt`: estimated arrival and departure dates.
             """)
 
             # --- Show per-barge route tables ---
             for barge_id, stops in df_route.groupby('barge_id'):
                 st.subheader(f"Barge {barge_id} Route")
-                st.dataframe(stops[['visit_order', 'site_id', 'qty', 'cumulative_qty', 'arrival_min', 'departure_min']])
+                st.dataframe(stops[['visit_order', 'site_id', 'qty', 'cumulative_qty', 'arrival_dt', 'departure_dt']])
 
             st.subheader(f"Route Maps")
             st.markdown("Visual representation of the optimized delivery route from the depot.")
