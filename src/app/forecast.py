@@ -46,6 +46,7 @@ class Forecast:
     def __fit_and_forecast(self, series: pd.Series, h: int) -> tuple[pd.Series, str]:
         """
         Fits ETS and ARIMA models on a time series and selects the best based on backtest RMSE.
+        Handles small series, missing weeks, and ensures realistic forecasts.
 
         Args:
             series (pd.Series): Weekly units sold, indexed by week_start datetime.
@@ -56,27 +57,52 @@ class Forecast:
             method (str): Model used ('ETS' or 'ARIMA').
         """
         n = len(series)
-        train = series.iloc[:max(1, n - self.holdout_weeks)]
+        # Fill missing weeks with linear interpolation
+        ts = series.asfreq('7D').interpolate(method='linear').fillna(method='bfill')
+        
+        train_len = max(3, n - self.holdout_weeks)  # ensure minimum training length
+        train = ts.iloc[:train_len]
 
-        # ETS model
+        # If series is too short, use simple trend or mean
+        #if n < 10:
+        #    mean_val = max(0, int(round(train.mean())))
+        #    forecast = pd.Series([mean_val] * h,
+        #                         index=pd.date_range(train.index[-1] + pd.Timedelta(7, 'd'),
+        #                                             periods=h, freq='7D'))
+        #    return forecast, "Simple"
+
+        # --- ETS forecast ---
         try:
-            ets = ExponentialSmoothing(train, seasonal='add', seasonal_periods=52).fit()
-            ets_fore = ets.forecast(h)
-            ets_err = (np.sqrt(((series.iloc[-self.holdout_weeks:] - ets.forecast(self.holdout_weeks))**2).mean())
-                       if n > self.holdout_weeks else np.inf)
+            ets_model = ExponentialSmoothing(
+                train,
+                trend='add',
+                seasonal='add',
+                seasonal_periods=52
+            ).fit(optimized=True)
+            ets_fore = ets_model.forecast(h)
+            ets_err = np.inf
+            if n > self.holdout_weeks:
+                backtest_fore = ets_model.forecast(self.holdout_weeks)
+                ets_err = np.sqrt(((ts.iloc[-self.holdout_weeks:] - backtest_fore)**2).mean())
         except Exception as ex:
             print("ETS failed:", ex)
             ets_fore = pd.Series(np.repeat(train.mean(), h),
-                                 index=pd.date_range(train.index[-1] + pd.Timedelta(7, 'd'),
-                                                     periods=h, freq='7D'))
+                                index=pd.date_range(train.index[-1] + pd.Timedelta(7, 'd'),
+                                                    periods=h, freq='7D'))
             ets_err = np.inf
 
-        # ARIMA model
+        # --- ARIMA forecast ---
         try:
-            ar = ARIMA(train, order=(1, 1, 1)).fit()
-            ar_fore = ar.get_forecast(h).predicted_mean
-            ar_err = (np.sqrt(((series.iloc[-self.holdout_weeks:] - ar.get_forecast(self.holdout_weeks).predicted_mean)**2).mean())
-                      if n > self.holdout_weeks else np.inf)
+            if len(train) >= 5:  # require enough points
+                ar_model = ARIMA(train, order=(1,1,1))
+                ar_fit = ar_model.fit()
+                ar_fore = ar_fit.get_forecast(h).predicted_mean
+                ar_err = np.inf
+                if n > self.holdout_weeks:
+                    backtest_fore = ar_fit.get_forecast(self.holdout_weeks).predicted_mean
+                    ar_err = np.sqrt(((ts.iloc[-self.holdout_weeks:] - backtest_fore)**2).mean())
+            else:
+                raise ValueError("Not enough data for ARIMA")
         except Exception as ex:
             print("ARIMA failed:", ex)
             ar_fore = pd.Series(np.repeat(train.mean(), h),
@@ -84,7 +110,7 @@ class Forecast:
                                                     periods=h, freq='7D'))
             ar_err = np.inf
 
-        # Choose the model with lower error
+        # --- Choose best model ---
         if ar_err < ets_err:
             chosen, method = ar_fore, 'ARIMA'
         else:
